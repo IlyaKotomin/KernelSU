@@ -1,0 +1,35 @@
+name: Koto S25 source build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  kernel:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/ylarod/ddk-min@sha256:51159bc935c75a282fc65bc87e02f16bd098d1cdf55dc558c4fdd0fcf7a132e2
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Build exact-release Samsung module
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          test -n "$KDIR"
+          release='6.6.98-android15-8-pe17667d-abogkiS931BXXS9CZE1-4k'
+          printf '#define UTS_RELEASE "%s"\n' "$release" > "$KDIR/include/generated/utsrelease.h"
+          printf '%s\n' "$release" > "$KDIR/include/config/kernel.release"
+          cd kernel
+          CONFIG_KSU=m CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y CC=clang make KSU_VERSION=32525
+          mkdir -p ../out
+          cp kernelsu.ko ../out/android15-6.6_kernelsu.ko
+          llvm-strip -d ../out/android15-6.6_kernelsu.ko
+          modinfo ../out/android15-6.6_kernelsu.ko
+          sha256sum ../out/android15-6.6_kernelsu.ko > ../out/module.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: koto-s25-module
+          path: out/
+          if-no-files-found: error

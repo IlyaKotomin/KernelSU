@@ -63,6 +63,10 @@ fn main() {
             (0, "0.0.0".to_string())
         }
     };
+    let code = env::var("KSU_VERSION_CODE").ok().and_then(|value| value.parse::<u32>().ok()).unwrap_or(code);
+    let name = env::var("KSU_VERSION_NAME").unwrap_or(name);
+    println!("cargo:rerun-if-env-changed=KSU_VERSION_CODE");
+    println!("cargo:rerun-if-env-changed=KSU_VERSION_NAME");
     let out_dir = env::var("OUT_DIR").expect("Failed to get $OUT_DIR");
     let out_dir = Path::new(&out_dir);
     File::create(Path::new(out_dir).join("VERSION_CODE"))
