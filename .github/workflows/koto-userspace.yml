@@ -31,6 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           bash koto-busybox/koto/build.sh
+          mkdir -p userspace/ksud/bin/aarch64
           cp koto-busybox/koto-out/libs/arm64-v8a/busybox userspace/ksud/bin/aarch64/busybox
       - name: Download our exact-source kernel module
         uses: actions/download-artifact@v8
