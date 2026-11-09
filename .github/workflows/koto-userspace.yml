@@ -1,0 +1,72 @@
+name: Koto S25 userspace source build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  userspace:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install fixed NDK and Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+          rustup target add aarch64-linux-android
+      - name: Fetch pinned BusyBox source
+        uses: actions/checkout@v6
+        with:
+          repository: IlyaKotomin/ndk-busybox
+          ref: 35f896836bb6505a6c1281a9a6d9efb2ef5bd8b5
+          path: koto-busybox
+      - name: Build BusyBox and static dependencies from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash koto-busybox/koto/build.sh
+          cp koto-busybox/koto-out/libs/arm64-v8a/busybox userspace/ksud/bin/aarch64/busybox
+      - name: Download our exact-source kernel module
+        uses: actions/download-artifact@v8
+        with:
+          repository: IlyaKotomin/KernelSU
+          run-id: 42635541526
+          github-token: ${{ github.token }}
+          name: koto-s25-module
+          path: koto-module
+      - name: Verify and embed our module
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'be50f63602b9f0fbb4f908090f3c9d4add08de930e129edfb3ec6f4a971dd29f  koto-module/android15-6.6_kernelsu.ko' | sha256sum -c -
+          cp koto-module/android15-6.6_kernelsu.ko userspace/ksud/bin/aarch64/
+          test ! -e userspace/ksud/bin/aarch64/bootctl
+          test "$(find userspace/ksud/bin/aarch64 -maxdepth 1 -type f | wc -l)" -eq 2
+      - name: Build ksud from locked source
+        shell: bash
+        env:
+          KSU_VERSION_CODE: '32525'
+          KSU_VERSION_NAME: '3.2.5-koto-s25'
+        run: |
+          set -euo pipefail
+          source .github/scripts/setup-rust-build.sh aarch64-linux-android 35
+          export LIBCLANG_PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/lib"
+          cargo build --locked --release --target aarch64-linux-android -p ksud
+          mkdir -p out
+          cp target/aarch64-linux-android/release/ksud out/ksud-s931b-koto
+          cp userspace/ksud/bin/aarch64/* out/
+          git rev-parse HEAD > out/source-commit.txt
+          git -C koto-busybox rev-parse HEAD > out/busybox-source-commit.txt
+          rustc --version > out/rust-version.txt
+          sha256sum out/ksud-s931b-koto out/busybox out/android15-6.6_kernelsu.ko > out/SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: koto-s25-userspace
+          path: out/
+          if-no-files-found: error
